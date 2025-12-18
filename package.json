@@ -1,0 +1,12 @@
+{
+  "name": "agent-led-survey",
+  "private": true,
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build"
+  },
+  "devDependencies": {
+    "turbo": "^1.13.0"
+  }
+}
