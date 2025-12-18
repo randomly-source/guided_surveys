@@ -57,18 +57,25 @@ export function useRealtimeSession(sessionId: string) {
             try {
               const householdData = await loadHouseholdData(sessionData.household_id)
               // Merge household data, but session responses take precedence if they exist
-              Object.keys(householdData).forEach((questionId) => {
+              // Use Promise.all to handle all upserts properly
+              const upsertPromises = Object.keys(householdData).map(async (questionId) => {
                 // Only use household data if session doesn't have a response for this question
                 if (!map[questionId]) {
                   map[questionId] = householdData[questionId]
                   // Also save to session responses so it's synced
-                  supabase.from('survey_responses').upsert({
-                    session_id: sessionId,
-                    question_id: questionId,
-                    value: householdData[questionId]
-                  }).catch(console.error)
+                  try {
+                    await supabase.from('survey_responses').upsert({
+                      session_id: sessionId,
+                      question_id: questionId,
+                      value: householdData[questionId]
+                    })
+                  } catch (error) {
+                    console.error(`Error upserting response for ${questionId}:`, error)
+                  }
                 }
               })
+              // Fire and forget - don't wait for all upserts to complete
+              Promise.all(upsertPromises).catch(console.error)
             } catch (error) {
               console.error('Error loading household data:', error)
             }
