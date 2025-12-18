@@ -19,7 +19,8 @@ import {
   Loader2,
   ListChecks,
   CheckCircle,
-  Home
+  Home,
+  Plus
 } from 'lucide-react'
 
 function AgentPageContent() {
@@ -62,9 +63,14 @@ function AgentPageContent() {
     const existingSessionId = searchParams.get('session')
     if (existingSessionId) {
       setSessionId(existingSessionId)
+      setShowHouseholdInput(false)
     } else {
       // Show household input for new session
+      setSessionId(null)
       setShowHouseholdInput(true)
+      setHouseholdId('')
+      setSubmitError(null)
+      setSubmitSuccess(false)
     }
   }, [searchParams, router])
 
@@ -112,6 +118,11 @@ function AgentPageContent() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleStartNewSession = () => {
+    // Use window.location for a full page reload to ensure clean state
+    window.location.href = '/'
   }
 
   const { session, responses, updateSession } = useRealtimeSession(sessionId || '')
@@ -292,7 +303,16 @@ function AgentPageContent() {
             </h1>
             <p className="text-gray-600 mt-1">Manage and monitor live survey sessions</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="md"
+              onClick={handleStartNewSession}
+              className="flex items-center gap-2"
+            >
+              <Plus className="w-4 h-4" />
+              Start New Session
+            </Button>
             {isCompleted ? (
               <Badge variant="success">
                 <CheckCircle className="w-3 h-3 mr-1" />

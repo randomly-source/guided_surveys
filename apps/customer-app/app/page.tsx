@@ -1,5 +1,5 @@
 'use client'
-import { useState, useEffect, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useRealtimeSession } from '../lib/useRealtimeSession'
 import { surveyPages } from '../lib/survey-config'
@@ -40,6 +40,10 @@ function CustomerPageContent() {
   const { session, responses, updateResponse } = useRealtimeSession(sessionId)
   const [localResponses, setLocalResponses] = useState<Record<string, any>>({})
   const [sessionNotFound, setSessionNotFound] = useState(false)
+  
+  // Track which fields are being actively edited to prevent realtime overwrites
+  const editingFieldsRef = useRef<Set<string>>(new Set())
+  const debounceTimeoutsRef = useRef<Record<string, NodeJS.Timeout>>({})
 
   // Check if session exists after a reasonable timeout
   useEffect(() => {
@@ -61,9 +65,32 @@ function CustomerPageContent() {
   }, []) // Only run once on mount
 
   // Update local responses when remote responses change (from other sources)
+  // But don't overwrite fields that are currently being edited
   useEffect(() => {
-    setLocalResponses(prev => ({ ...prev, ...responses }))
+    setLocalResponses(prev => {
+      const updated = { ...prev }
+      Object.keys(responses).forEach(questionId => {
+        if (!editingFieldsRef.current.has(questionId)) {
+          // Only update if local value doesn't exist or matches incoming value
+          // This prevents overwriting with stale realtime values
+          if (prev[questionId] === undefined || prev[questionId] === responses[questionId]) {
+            updated[questionId] = responses[questionId]
+          }
+          // If local value exists and is different, keep it (might be newer)
+        }
+      })
+      return updated
+    })
   }, [responses])
+  
+  // Cleanup debounce timeouts on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(debounceTimeoutsRef.current).forEach(timeout => {
+        if (timeout) clearTimeout(timeout)
+      })
+    }
+  }, [])
 
   // Track session changes for page updates (must be before conditional return)
   useEffect(() => {
@@ -125,10 +152,25 @@ function CustomerPageContent() {
   const canEdit = session.edit_mode === 'customer_editable' && !isCompleted
 
   const handleResponseChange = (questionId: string, value: any) => {
+    // Mark field as being actively edited
+    editingFieldsRef.current.add(questionId)
+    
     // Update local state immediately for responsive UI
     setLocalResponses(prev => ({ ...prev, [questionId]: value }))
-    // Sync to database
-    updateResponse(questionId, value)
+    
+    // Clear existing timeout for this field
+    if (debounceTimeoutsRef.current[questionId]) {
+      clearTimeout(debounceTimeoutsRef.current[questionId])
+    }
+    
+    // Debounce database update (300ms delay)
+    debounceTimeoutsRef.current[questionId] = setTimeout(() => {
+      updateResponse(questionId, value)
+      // Allow realtime updates after a longer delay to ensure our update is processed
+      setTimeout(() => {
+        editingFieldsRef.current.delete(questionId)
+      }, 1000) // Increased from 500ms to 1000ms for safety
+    }, 300)
   }
 
   const progressPercentage = ((session.current_page + 1) / surveyPages.length) * 100
