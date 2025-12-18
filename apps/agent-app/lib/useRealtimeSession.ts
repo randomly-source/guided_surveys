@@ -1,12 +1,15 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { supabase } from './supabase'
+import { loadHouseholdData } from '@repo/realtime'
 
 export function useRealtimeSession(sessionId: string) {
   const [session, setSession] = useState<any>(null)
   const [responses, setResponses] = useState<Record<string, any>>({})
 
   useEffect(() => {
+    if (!sessionId) return
+
     let channel: any = null
 
     const setupRealtime = async () => {
@@ -25,20 +28,43 @@ export function useRealtimeSession(sessionId: string) {
           }
         } else {
           setSession(sessionData)
-        }
 
-        const { data: responsesData, error: responsesError } = await supabase
-          .from('survey_responses')
-          .select('*')
-          .eq('session_id', sessionId)
+          const { data: responsesData, error: responsesError } = await supabase
+            .from('survey_responses')
+            .select('*')
+            .eq('session_id', sessionId)
 
-        if (responsesError) {
-          // Only log actual errors
-          console.error('Responses load error:', responsesError)
-        } else {
-          const map: Record<string, any> = {}
-          responsesData?.forEach((r: any) => (map[r.question_id] = r.value))
-          setResponses(map)
+          if (responsesError) {
+            // Only log actual errors
+            console.error('Responses load error:', responsesError)
+          } else {
+            const map: Record<string, any> = {}
+            responsesData?.forEach((r: any) => (map[r.question_id] = r.value))
+            
+            // If session has household_id, load and merge household data
+            if (sessionData?.household_id) {
+              try {
+                const householdData = await loadHouseholdData(sessionData.household_id)
+                // Merge household data, but session responses take precedence if they exist
+                Object.keys(householdData).forEach((questionId) => {
+                  // Only use household data if session doesn't have a response for this question
+                  if (!map[questionId]) {
+                    map[questionId] = householdData[questionId]
+                    // Also save to session responses so it's synced
+                    supabase.from('survey_responses').upsert({
+                      session_id: sessionId,
+                      question_id: questionId,
+                      value: householdData[questionId]
+                    }).catch(console.error)
+                  }
+                })
+              } catch (error) {
+                console.error('Error loading household data:', error)
+              }
+            }
+            
+            setResponses(map)
+          }
         }
 
         // Set up realtime - listen to all changes and filter by sessionId in callback

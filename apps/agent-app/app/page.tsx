@@ -7,6 +7,7 @@ import { surveyPages } from '../lib/survey-config'
 import { Card, CardHeader, CardTitle, CardContent } from '../lib/ui/Card'
 import { Button } from '../lib/ui/Button'
 import { Badge } from '../lib/ui/Badge'
+import { createSessionWithHousehold, submitToHousehold } from '@repo/realtime'
 import { 
   Copy, 
   Lock, 
@@ -16,7 +17,9 @@ import {
   Users, 
   FileText,
   Loader2,
-  ListChecks
+  ListChecks,
+  CheckCircle,
+  Home
 } from 'lucide-react'
 
 function AgentPageContent() {
@@ -25,6 +28,11 @@ function AgentPageContent() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
   const [customerAppUrl, setCustomerAppUrl] = useState<string>('http://localhost:3001')
+  const [householdId, setHouseholdId] = useState<string>('')
+  const [showHouseholdInput, setShowHouseholdInput] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitSuccess, setSubmitSuccess] = useState(false)
 
   // Get customer app URL from environment variable or construct it
   useEffect(() => {
@@ -55,26 +63,116 @@ function AgentPageContent() {
     if (existingSessionId) {
       setSessionId(existingSessionId)
     } else {
-      // Create a new session
-      const newSessionId = crypto.randomUUID()
-      supabase.from('survey_sessions').insert({
-        id: newSessionId,
-        current_page: 0,
-        edit_mode: 'customer_editable'
-      }).then(() => {
-        router.push(`?session=${newSessionId}`)
-        setSessionId(newSessionId)
-      })
+      // Show household input for new session
+      setShowHouseholdInput(true)
     }
   }, [searchParams, router])
 
-  const { session, responses, updateSession } = useRealtimeSession(sessionId!)
+  const handleCreateSession = async () => {
+    if (!householdId.trim()) {
+      setSubmitError('Please enter a household ID')
+      return
+    }
+
+    const newSessionId = crypto.randomUUID()
+    try {
+      await createSessionWithHousehold(newSessionId, householdId.trim())
+      router.push(`?session=${newSessionId}`)
+      setSessionId(newSessionId)
+      setShowHouseholdInput(false)
+      setSubmitError(null)
+    } catch (error: any) {
+      setSubmitError(error.message || 'Failed to create session')
+    }
+  }
+
+  const handleSubmitToHousehold = async () => {
+    if (!sessionId || !session?.household_id) {
+      setSubmitError('No household ID associated with this session')
+      return
+    }
+
+    if (Object.keys(responses).length === 0) {
+      setSubmitError('No responses to submit')
+      return
+    }
+
+    setIsSubmitting(true)
+    setSubmitError(null)
+    setSubmitSuccess(false)
+
+    try {
+      await submitToHousehold(sessionId, session.household_id)
+      setSubmitSuccess(true)
+      setTimeout(() => {
+        setSubmitSuccess(false)
+      }, 3000)
+    } catch (error: any) {
+      setSubmitError(error.message || 'Failed to submit responses')
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const { session, responses, updateSession } = useRealtimeSession(sessionId || '')
   
   const copyToClipboard = () => {
     const link = `${customerAppUrl}?session=${sessionId}`
     navigator.clipboard.writeText(link)
     setCopied(true)
     setTimeout(() => setCopied(false), 2000)
+  }
+
+  // Show household input if no session exists
+  if (showHouseholdInput && !sessionId) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center px-4">
+        <Card className="max-w-md w-full">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Home className="w-5 h-5" />
+              Create New Survey Session
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 mb-2 block">
+                Household ID *
+              </label>
+              <input
+                type="text"
+                value={householdId}
+                onChange={(e) => setHouseholdId(e.target.value)}
+                placeholder="Enter household ID"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleCreateSession()
+                  }
+                }}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Enter the household ID to associate with this survey session
+              </p>
+            </div>
+            {submitError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                <p className="text-sm text-red-600">{submitError}</p>
+              </div>
+            )}
+            <Button
+              variant="primary"
+              size="md"
+              onClick={handleCreateSession}
+              className="w-full"
+              disabled={!householdId.trim()}
+            >
+              Create Session
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   if (!session || !sessionId) {
@@ -87,6 +185,8 @@ function AgentPageContent() {
       </div>
     )
   }
+
+  const isCompleted = session.status === 'completed'
 
   const currentPage = surveyPages[session.current_page]
   const responseCount = Object.keys(responses).length
@@ -192,9 +292,18 @@ function AgentPageContent() {
             </h1>
             <p className="text-gray-600 mt-1">Manage and monitor live survey sessions</p>
           </div>
-          <Badge variant={session.edit_mode === 'customer_editable' ? 'success' : 'warning'}>
-            {session.edit_mode === 'customer_editable' ? 'Customer Can Edit' : 'Locked'}
-          </Badge>
+          <div className="flex gap-2">
+            {isCompleted ? (
+              <Badge variant="success">
+                <CheckCircle className="w-3 h-3 mr-1" />
+                Completed
+              </Badge>
+            ) : (
+              <Badge variant={session.edit_mode === 'customer_editable' ? 'success' : 'warning'}>
+                {session.edit_mode === 'customer_editable' ? 'Customer Can Edit' : 'Locked'}
+              </Badge>
+            )}
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -209,6 +318,17 @@ function AgentPageContent() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
+                {session.household_id && (
+                  <div>
+                    <label className="text-sm font-medium text-gray-700 mb-1 block flex items-center gap-2">
+                      <Home className="w-4 h-4" />
+                      Household ID
+                    </label>
+                    <code className="block bg-gray-50 p-3 rounded-lg text-sm font-mono text-gray-800 border border-gray-200">
+                      {session.household_id}
+                    </code>
+                  </div>
+                )}
                 <div>
                   <label className="text-sm font-medium text-gray-700 mb-1 block">
                     Session ID
@@ -268,7 +388,7 @@ function AgentPageContent() {
                       variant="outline"
                       size="md"
                       onClick={() => updateSession({ current_page: Math.max(session.current_page - 1, 0) })}
-                      disabled={session.current_page === 0}
+                      disabled={session.current_page === 0 || isCompleted}
                     >
                       <ChevronLeft className="w-4 h-4" />
                     </Button>
@@ -276,35 +396,88 @@ function AgentPageContent() {
                       variant="primary"
                       size="md"
                       onClick={() => updateSession({ current_page: Math.min(session.current_page + 1, surveyPages.length - 1) })}
-                      disabled={session.current_page === surveyPages.length - 1}
+                      disabled={session.current_page === surveyPages.length - 1 || isCompleted}
                     >
                       <ChevronRight className="w-4 h-4" />
                     </Button>
                   </div>
                 </div>
 
-                <div className="flex gap-3">
-                  <Button
-                    variant="success"
-                    size="md"
-                    onClick={() => updateSession({ edit_mode: 'customer_editable' })}
-                    className="flex-1"
-                    disabled={session.edit_mode === 'customer_editable'}
-                  >
-                    <Unlock className="w-4 h-4 mr-2" />
-                    Allow Editing
-                  </Button>
-                  <Button
-                    variant="danger"
-                    size="md"
-                    onClick={() => updateSession({ edit_mode: 'agent_only' })}
-                    className="flex-1"
-                    disabled={session.edit_mode === 'agent_only'}
-                  >
-                    <Lock className="w-4 h-4 mr-2" />
-                    Lock Editing
-                  </Button>
-                </div>
+                {!isCompleted && (
+                  <>
+                    <div className="flex gap-3">
+                      <Button
+                        variant="success"
+                        size="md"
+                        onClick={() => updateSession({ edit_mode: 'customer_editable' })}
+                        className="flex-1"
+                        disabled={session.edit_mode === 'customer_editable'}
+                      >
+                        <Unlock className="w-4 h-4 mr-2" />
+                        Allow Editing
+                      </Button>
+                      <Button
+                        variant="danger"
+                        size="md"
+                        onClick={() => updateSession({ edit_mode: 'agent_only' })}
+                        className="flex-1"
+                        disabled={session.edit_mode === 'agent_only'}
+                      >
+                        <Lock className="w-4 h-4 mr-2" />
+                        Lock Editing
+                      </Button>
+                    </div>
+
+                    {session.household_id && (
+                      <div className="pt-4 border-t border-gray-200">
+                        {submitError && (
+                          <div className="mb-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+                            <p className="text-sm text-red-600">{submitError}</p>
+                          </div>
+                        )}
+                        {submitSuccess && (
+                          <div className="mb-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                            <p className="text-sm text-green-600 flex items-center gap-2">
+                              <CheckCircle className="w-4 h-4" />
+                              Responses submitted successfully!
+                            </p>
+                          </div>
+                        )}
+                        <Button
+                          variant="primary"
+                          size="md"
+                          onClick={handleSubmitToHousehold}
+                          className="w-full"
+                          disabled={isSubmitting || Object.keys(responses).length === 0}
+                        >
+                          {isSubmitting ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Submitting...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle className="w-4 h-4 mr-2" />
+                              Submit Responses to Household
+                            </>
+                          )}
+                        </Button>
+                        <p className="text-xs text-gray-500 mt-2 text-center">
+                          This will save all responses to the household data table and mark the session as completed.
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {isCompleted && (
+                  <div className="p-4 bg-green-50 border border-green-200 rounded-lg">
+                    <p className="text-sm text-green-800 flex items-center gap-2">
+                      <CheckCircle className="w-4 h-4" />
+                      This session has been completed and responses have been saved to the household.
+                    </p>
+                  </div>
+                )}
               </CardContent>
             </Card>
 

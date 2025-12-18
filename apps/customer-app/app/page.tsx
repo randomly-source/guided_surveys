@@ -121,7 +121,8 @@ function CustomerPageContent() {
   }
 
   const page = surveyPages[session.current_page]
-  const canEdit = session.edit_mode === 'customer_editable'
+  const isCompleted = session.status === 'completed'
+  const canEdit = session.edit_mode === 'customer_editable' && !isCompleted
 
   const handleResponseChange = (questionId: string, value: any) => {
     // Update local state immediately for responsive UI
@@ -159,13 +160,26 @@ function CustomerPageContent() {
         </div>
 
         {/* Locked Notice */}
-        {!canEdit && (
+        {!canEdit && !isCompleted && (
           <div className="mb-6 sm:mb-8 p-3 sm:p-4 bg-amber-50 border-l-4 border-amber-400 rounded-r-lg flex items-start gap-2 sm:gap-3 animate-slideUp">
             <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-600 shrink-0 mt-0.5" />
             <div>
               <p className="text-amber-900 font-medium text-xs sm:text-sm mb-1">Survey is locked</p>
               <p className="text-amber-700 text-xs sm:text-sm">
                 The agent is currently navigating the survey. Please wait for them to unlock editing or move to the next section.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Completed Notice */}
+        {isCompleted && (
+          <div className="mb-6 sm:mb-8 p-3 sm:p-4 bg-green-50 border-l-4 border-green-400 rounded-r-lg flex items-start gap-2 sm:gap-3 animate-slideUp">
+            <Lock className="w-4 h-4 sm:w-5 sm:h-5 text-green-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-green-900 font-medium text-xs sm:text-sm mb-1">Survey Completed</p>
+              <p className="text-green-700 text-xs sm:text-sm">
+                This survey session has been completed and all responses have been saved. No further edits are allowed.
               </p>
             </div>
           </div>
