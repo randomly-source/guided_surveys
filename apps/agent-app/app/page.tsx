@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useRealtimeSession } from '../lib/useRealtimeSession'
 import { supabase } from '../lib/supabase'
@@ -18,7 +18,7 @@ import {
   Loader2
 } from 'lucide-react'
 
-export default function AgentPage() {
+function AgentPageContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const [sessionId, setSessionId] = useState<string | null>(null)
@@ -225,5 +225,20 @@ export default function AgentPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AgentPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-4" />
+          <p className="text-gray-600">Loading...</p>
+        </div>
+      </div>
+    }>
+      <AgentPageContent />
+    </Suspense>
   )
 }

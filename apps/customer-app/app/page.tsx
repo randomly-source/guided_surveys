@@ -1,12 +1,12 @@
 'use client'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { useRealtimeSession } from '../lib/useRealtimeSession'
 import { surveyPages } from '../lib/survey-config'
 import { SurveyRenderer } from '../lib/SurveyRenderer'
 import { Loader2, Lock, AlertCircle } from 'lucide-react'
 
-export default function CustomerPage() {
+function CustomerPageContent() {
   const sessionId = useSearchParams().get('session')!
 
   if (!sessionId) {
@@ -145,5 +145,20 @@ export default function CustomerPage() {
         </form>
       </div>
     </div>
+  )
+}
+
+export default function CustomerPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-white flex items-center justify-center px-4">
+        <div className="text-center">
+          <Loader2 className="w-8 h-8 sm:w-10 sm:h-10 animate-spin text-purple-600 mx-auto mb-4" />
+          <p className="text-base sm:text-lg text-gray-600">Loading survey...</p>
+        </div>
+      </div>
+    }>
+      <CustomerPageContent />
+    </Suspense>
   )
 }
