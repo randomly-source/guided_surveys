@@ -7,7 +7,16 @@ import { SurveyRenderer } from '../lib/SurveyRenderer'
 import { Loader2, Lock, AlertCircle } from 'lucide-react'
 
 function CustomerPageContent() {
-  const sessionId = useSearchParams().get('session')!
+  const searchParams = useSearchParams()
+  const sessionId = searchParams.get('session')
+
+  // Get current URL for example (dynamic)
+  const getExampleUrl = () => {
+    if (typeof window !== 'undefined') {
+      return `${window.location.origin}${window.location.pathname}?session=123e4567-e89b-12d3-a456-426614174000`
+    }
+    return 'https://your-customer-app-url.com?session=123e4567-e89b-12d3-a456-426614174000'
+  }
 
   if (!sessionId) {
     return (
@@ -20,7 +29,7 @@ function CustomerPageContent() {
           <div className="bg-gray-50 p-4 rounded-lg border border-gray-200 text-left">
             <p className="text-xs sm:text-sm text-gray-500 mb-2">Example URL:</p>
             <code className="text-xs sm:text-sm font-mono text-gray-700 break-all">
-              http://localhost:3001?session=123e4567-e89b-12d3-a456-426614174000
+              {getExampleUrl()}
             </code>
           </div>
         </div>
@@ -30,6 +39,21 @@ function CustomerPageContent() {
 
   const { session, responses, updateResponse } = useRealtimeSession(sessionId)
   const [localResponses, setLocalResponses] = useState<Record<string, any>>({})
+  const [sessionNotFound, setSessionNotFound] = useState(false)
+
+  // Check if session exists after a reasonable timeout
+  useEffect(() => {
+    if (!session && sessionId) {
+      const timeout = setTimeout(() => {
+        // If session still doesn't exist after 5 seconds, it might not exist
+        setSessionNotFound(true)
+      }, 5000)
+
+      return () => clearTimeout(timeout)
+    } else if (session) {
+      setSessionNotFound(false)
+    }
+  }, [session, sessionId])
 
   // Initialize local responses with remote data on mount
   useEffect(() => {
@@ -69,6 +93,23 @@ function CustomerPageContent() {
   // #endregion
 
   if (!session) {
+    if (sessionNotFound) {
+      return (
+        <div className="min-h-screen bg-white flex items-center justify-center px-4">
+          <div className="text-center max-w-md">
+            <AlertCircle className="w-12 h-12 sm:w-16 sm:h-16 text-amber-500 mx-auto mb-4" />
+            <h1 className="text-xl sm:text-2xl font-medium text-gray-900 mb-2">Session Not Found</h1>
+            <p className="text-base sm:text-lg text-gray-600 mb-4">
+              The survey session with ID <code className="bg-gray-100 px-2 py-1 rounded text-sm">{sessionId}</code> could not be found.
+            </p>
+            <p className="text-sm text-gray-500">
+              Please check with your agent to ensure you have the correct survey link.
+            </p>
+          </div>
+        </div>
+      )
+    }
+    
     return (
       <div className="min-h-screen bg-white flex items-center justify-center px-4">
         <div className="text-center">
