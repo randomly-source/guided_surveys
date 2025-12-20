@@ -7,7 +7,8 @@ import { surveyPages } from '../lib/survey-config'
 import { Card, CardHeader, CardTitle, CardContent } from '../lib/ui/Card'
 import { Button } from '../lib/ui/Button'
 import { Badge } from '../lib/ui/Badge'
-import { createSessionWithHousehold, submitToHousehold } from '@repo/realtime'
+import { submitToHousehold } from '@repo/realtime'
+import { createSessionWithHousehold } from '@/app/actions/survey'
 import { 
   Copy, 
   Lock, 
@@ -81,14 +82,16 @@ function AgentPageContent() {
     }
 
     const newSessionId = crypto.randomUUID()
-    try {
-      await createSessionWithHousehold(newSessionId, householdId.trim())
+    const result = await createSessionWithHousehold(newSessionId, householdId.trim())
+    
+    if (result.success) {
       router.push(`?session=${newSessionId}`)
       setSessionId(newSessionId)
       setShowHouseholdInput(false)
       setSubmitError(null)
-    } catch (error: any) {
-      setSubmitError(error.message || 'Failed to create session')
+    } else {
+      setSubmitError(result.error || 'Failed to create session')
+      console.error('Failed to create session:', result.error)
     }
   }
 
